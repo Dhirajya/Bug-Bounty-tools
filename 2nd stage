@@ -1,1 +1,662 @@
+# 2 Advanced scan tools cmd
 
+firstr applying 1 tools cmd for BB recon 
+
+wayback_Urls, probing_Domains, nuclei_Scanning, port scanning, xss scan, Js Scan
+
+### 1) PROBING DOMAINS (Find Live Websites)
+
+### Tool: `httpx`
+
+### Purpose
+
+Find **which subdomains have web services**.
+
+### Command
+
+```bash
+httpx -l alive_subdomains.txt \
+  -status-code \
+  -title \
+  -tech-detect \
+  -o live_http.txt
+
+```
+
+### 2) WAYBACK URL COLLECTION
+
+### Tool: `waybackurls` + `gau`
+
+### Purpose
+
+Find **old & hidden endpoints** (most bugs are here)
+
+## waybackurls
+
+```bash
+cat live_http.txt | waybackurls > wayback.txt
+
+```
+
+## gau (better coverage)
+
+```bash
+cat live_http.txt | gau > gau.txt
+
+```
+
+## Combine & Clean
+
+```bash
+cat wayback.txt gau.txt |sort -u > all_urls.txt
+
+```
+
+## 4️⃣ Incorrect input format
+
+waybackurls [example.com](http://example.com/) > urls.txt   
+
+✅ CORRECT:
+
+```bash
+waybackurls example.com
+
+```
+
+Same for gau:
+
+```bash
+gau example.com
+
+```
+
+### 3) JAVASCRIPT (JS) SCANNING
+
+- `httpx`
+- `LinkFinder`
+- `SecretFinder`
+
+## Extract JS URLs
+
+```bash
+grep "\.js" all_urls.txt |sort -u > js_files.txt
+
+```
+
+## Better JS filtering (recommended)
+
+Avoid false positives like `.json`, `.jsp`:
+
+```bash
+grep -Ei "\.js($|\?)" all_urls.txt |sort -u > js_files.txt
+
+```
+
+## Optional: Check live JS files
+
+```bash
+httpx -l js_files.txt -status-code -mc 200 -o live_js.txt
+
+```
+
+## Next steps (JS recon flow)
+
+1. Extract JS URLs ✅
+2. Find secrets:
+
+```bash
+grep -Ei "apikey|token|secret|auth" js_files.txt
+
+```
+
+1. Analyze with:
+- LinkFinder
+- Nuclei JS templates
+
+## **full JS hunting checklist**
+
+## check the 3rd notes page
+
+### STEP 1: Find REAL JS files (important)
+
+```bash
+gau bankera.com | grep"\.js" |sort -u > js_urls.txt
+
+```
+
+### STEP 2: Download a JS file locally
+
+          make Folder :  
+
+```jsx
+mkdir -p ~/Desktop/dhiraj/hunting/recon/example.com/js
+```
+
+```bash
+
+cd ~/Desktop/dhiraj/hunting/recon/example.com/js
+
+curl -A"Mozilla/5.0" -L \
+https://exapmle.com/assets/index.9c21a3.js \
+-o index.js
+
+```
+
+### STEP 3: Run LinkFinder (ERROR-FREE)
+
+```bash
+cd /opt/tools/LinkFinder
+source venv/bin/activate
+
+python3 linkfinder.py \
+  -i ~/Desktop/dhiraj/hunting/recon/bankera.com/js/index.js \
+  -o txt \
+  --output ~/Desktop/dhiraj/hunting/recon/bankera.com/LinkFinder.txt
+
+```
+
+✅ Works
+
+✅ Output saved
+
+✅ No 403
+
+✅ No 404
+
+✅ No SSL error
+
+## X ) LinkFinder (Endpoints in JS)
+
+```bash
+cd /opt/tools/LinkFinder
+source venv/bin/activate
+
+python3 linkfinder.py \
+  -i https://example.com/app.js \
+  -o cli | tee ~/Desktop/dhiraj/hunting/recon/filename/linkFinder.txt
+
+```
+
+**Bug focus**:
+
+- Hidden APIs
+- Admin routes
+- Debug endpoints
+
+## SecretFinder (Keys & Tokens)
+
+```bash
+cd /opt/tools/SecretFinder
+source venv/bin/activate
+
+python3 SecretFinder.py \
+  -i https://example.com/app.js \
+  -o cli | tee ~/Desktop/dhiraj/hunting/recon/filename/secretFinder.txt
+```
+
+**Bug focus**:
+
+- API keys
+- AWS keys
+- Firebase config
+- Tokens
+
+### 4) PORT SCANNING
+
+Tool: `naabu`
+
+### Purpose
+
+Find **services not running on 80/443**
+
+### Command
+
+```bash
+naabu -l alive_subdomains.txt -top-ports 1000 -o ports.txt
+
+```
+
+Or fast mode:
+
+```bash
+naabu -l alive_subdomains.txt -p - -rate 10000 -o ports.txt
+
+```
+
+**Bug focus**:
+
+- `8080`, `8443`
+- `3000` (dev apps)
+- `9200` (Elastic)
+- `27017` (Mongo)
+
+### 5) NUCLEI SCANNING (AUTOMATED VULNS)
+
+### Tool: `nuclei`
+
+### Purpose
+
+Detect **real vulnerabilities** fast.
+
+## Update templates
+
+```bash
+nuclei -update-templates
+
+```
+
+## Basic Scan
+
+```bash
+nuclei -l live_http.txt -o nuclei_results.txt
+
+```
+
+## High-Value Scan
+
+```bash
+nuclei -l live_http.txt \
+-severity medium,high,critical \
+-o nuclei_critical.txt
+
+```
+
+## JS & Takeover Scan
+
+```bash
+
+nuclei -l live_http.txt \
+-t misconfiguration,exposures,takeovers \
+-o nuclei_misconfig.txt
+
+```
+
+**Reportable**:
+
+- Open panels
+- Default creds
+- Exposed files
+- Takeovers
+
+### 6) XSS SCANNING
+
+### ools:
+
+- `gf`
+- `qsreplace`
+- `kxss`
+- `dalfox`
+
+## Find XSS Parameters
+
+```bash
+cat all_urls.txt | gf xss > xss_params.txt
+
+```
+
+## Replace Parameters
+
+```bash
+cat xss_params.txt | qsreplace '<svg/onload=alert(1)>' > xss_payloads.txt
+
+```
+
+## Reflection Check
+
+```bash
+cat xss_payloads.txt | kxss > reflected.txt
+
+```
+
+## Full XSS Scan (BEST)
+
+```bash
+dalfox file xss_params.txt -o dalfox.txt
+
+```
+
+**Bug focus**:
+
+- Reflected XSS
+- DOM XSS
+- Stored XSS
+
+## REAL BUG BOUNTY FINDINGS (FROM THESE TOOLS)
+
+| Tool | Bugs Found |
+| --- | --- |
+| waybackurls | IDOR, Open redirect |
+| JS scan | Hidden APIs, secrets |
+| naabu | Admin panels |
+| nuclei | CVEs, misconfigs |
+| dalfox | XSS |
+firstr applying 1 tools cmd for BB recon 
+
+wayback_Urls, probing_Domains, nuclei_Scanning, port scanning, xss scan, Js Scan
+
+### 1) PROBING DOMAINS (Find Live Websites)
+
+### Tool: `httpx`
+
+### Purpose
+
+Find **which subdomains have web services**.
+
+### Command
+
+```bash
+httpx -l alive_subdomains.txt \
+  -status-code \
+  -title \
+  -tech-detect \
+  -o live_http.txt
+
+```
+
+### 2) WAYBACK URL COLLECTION
+
+### Tool: `waybackurls` + `gau`
+
+### Purpose
+
+Find **old & hidden endpoints** (most bugs are here)
+
+## waybackurls
+
+```bash
+cat live_http.txt | waybackurls > wayback.txt
+
+```
+
+## gau (better coverage)
+
+```bash
+cat live_http.txt | gau > gau.txt
+
+```
+
+## Combine & Clean
+
+```bash
+cat wayback.txt gau.txt |sort -u > all_urls.txt
+
+```
+
+## 4️⃣ Incorrect input format
+
+waybackurls [example.com](http://example.com/) > urls.txt   
+
+✅ CORRECT:
+
+```bash
+waybackurls example.com
+
+```
+
+Same for gau:
+
+```bash
+gau example.com
+
+```
+
+### 3) JAVASCRIPT (JS) SCANNING
+
+- `httpx`
+- `LinkFinder`
+- `SecretFinder`
+
+## Extract JS URLs
+
+```bash
+grep "\.js" all_urls.txt |sort -u > js_files.txt
+
+```
+
+## Better JS filtering (recommended)
+
+Avoid false positives like `.json`, `.jsp`:
+
+```bash
+grep -Ei "\.js($|\?)" all_urls.txt |sort -u > js_files.txt
+
+```
+
+## Optional: Check live JS files
+
+```bash
+httpx -l js_files.txt -status-code -mc 200 -o live_js.txt
+
+```
+
+## Next steps (JS recon flow)
+
+1. Extract JS URLs ✅
+2. Find secrets:
+
+```bash
+grep -Ei "apikey|token|secret|auth" js_files.txt
+
+```
+
+1. Analyze with:
+- LinkFinder
+- Nuclei JS templates
+
+## **full JS hunting checklist**
+
+## check the 3rd notes page
+
+### STEP 1: Find REAL JS files (important)
+
+```bash
+gau bankera.com | grep"\.js" |sort -u > js_urls.txt
+
+```
+
+### STEP 2: Download a JS file locally
+
+          make Folder :  
+
+```jsx
+mkdir -p ~/Desktop/dhiraj/hunting/recon/example.com/js
+```
+
+```bash
+
+cd ~/Desktop/dhiraj/hunting/recon/example.com/js
+
+curl -A"Mozilla/5.0" -L \
+https://exapmle.com/assets/index.9c21a3.js \
+-o index.js
+
+```
+
+### STEP 3: Run LinkFinder (ERROR-FREE)
+
+```bash
+cd /opt/tools/LinkFinder
+source venv/bin/activate
+
+python3 linkfinder.py \
+  -i ~/Desktop/dhiraj/hunting/recon/bankera.com/js/index.js \
+  -o txt \
+  --output ~/Desktop/dhiraj/hunting/recon/bankera.com/LinkFinder.txt
+
+```
+
+✅ Works
+
+✅ Output saved
+
+✅ No 403
+
+✅ No 404
+
+✅ No SSL error
+
+## X ) LinkFinder (Endpoints in JS)
+
+```bash
+cd /opt/tools/LinkFinder
+source venv/bin/activate
+
+python3 linkfinder.py \
+  -i https://example.com/app.js \
+  -o cli | tee ~/Desktop/dhiraj/hunting/recon/filename/linkFinder.txt
+
+```
+
+**Bug focus**:
+
+- Hidden APIs
+- Admin routes
+- Debug endpoints
+
+## SecretFinder (Keys & Tokens)
+
+```bash
+cd /opt/tools/SecretFinder
+source venv/bin/activate
+
+python3 SecretFinder.py \
+  -i https://example.com/app.js \
+  -o cli | tee ~/Desktop/dhiraj/hunting/recon/filename/secretFinder.txt
+```
+
+**Bug focus**:
+
+- API keys
+- AWS keys
+- Firebase config
+- Tokens
+
+### 4) PORT SCANNING
+
+Tool: `naabu`
+
+### Purpose
+
+Find **services not running on 80/443**
+
+### Command
+
+```bash
+naabu -l alive_subdomains.txt -top-ports 1000 -o ports.txt
+
+```
+
+Or fast mode:
+
+```bash
+naabu -l alive_subdomains.txt -p - -rate 10000 -o ports.txt
+
+```
+
+**Bug focus**:
+
+- `8080`, `8443`
+- `3000` (dev apps)
+- `9200` (Elastic)
+- `27017` (Mongo)
+
+### 5) NUCLEI SCANNING (AUTOMATED VULNS)
+
+### Tool: `nuclei`
+
+### Purpose
+
+Detect **real vulnerabilities** fast.
+
+## Update templates
+
+```bash
+nuclei -update-templates
+
+```
+
+## Basic Scan
+
+```bash
+nuclei -l live_http.txt -o nuclei_results.txt
+
+```
+
+## High-Value Scan
+
+```bash
+nuclei -l live_http.txt \
+-severity medium,high,critical \
+-o nuclei_critical.txt
+
+```
+
+## JS & Takeover Scan
+
+```bash
+
+nuclei -l live_http.txt \
+-t misconfiguration,exposures,takeovers \
+-o nuclei_misconfig.txt
+
+```
+
+**Reportable**:
+
+- Open panels
+- Default creds
+- Exposed files
+- Takeovers
+
+### 6) XSS SCANNING
+
+### ools:
+
+- `gf`
+- `qsreplace`
+- `kxss`
+- `dalfox`
+
+## Find XSS Parameters
+
+```bash
+cat all_urls.txt | gf xss > xss_params.txt
+
+```
+
+## Replace Parameters
+
+```bash
+cat xss_params.txt | qsreplace '<svg/onload=alert(1)>' > xss_payloads.txt
+
+```
+
+## Reflection Check
+
+```bash
+cat xss_payloads.txt | kxss > reflected.txt
+
+```
+
+## Full XSS Scan (BEST)
+
+```bash
+dalfox file xss_params.txt -o dalfox.txt
+
+```
+
+**Bug focus**:
+
+- Reflected XSS
+- DOM XSS
+- Stored XSS
+
+## REAL BUG BOUNTY FINDINGS (FROM THESE TOOLS)
+
+| Tool | Bugs Found |
+| --- | --- |
+| waybackurls | IDOR, Open redirect |
+| JS scan | Hidden APIs, secrets |
+| naabu | Admin panels |
+| nuclei | CVEs, misconfigs |
+| dalfox | XSS |
