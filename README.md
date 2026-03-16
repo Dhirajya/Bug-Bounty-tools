@@ -1,2 +1,275 @@
 # Bug-Bounty-tools
 tools
+
+Bug Bounty Flow 
+
+Subdomains
+↓
+Live Domains
+↓
+URLs (Wayback)
+↓
+JS Files
+↓
+Ports
+↓
+Nuclei
+↓
+Manual XSS
+
+Usage :
+ 
+
+       -s   for only subdomain enumeration
+
+```
+	  -m   for medium level scan [subdomain Enumeration, subdomain Takeover, probing_Domains, port scanning, nuclei_Scanning]
+
+	  -a   for advance level scan [subdomain Enumeration, subdomain Takeover, wayback_Urls, probing_Domains, nuclei_Scanning, port scanning, xss scan, Js Scan]
+
+```
+
+| Tool | Purpose |
+| --- | --- |
+| `subfinder` | Fast passive enumeration |
+| `assetfinder` | Finds related domains |
+| `findomain` | Very good passive + APIs |
+| `ctfr` | Finds subdomains via certificate transparency |
+| `github-subdomains` | Finds leaked subdomains from GitHub |
+| `crobat` | Uses ProjectDiscovery Sonar |
+| `puredns` | Brute-force + resolve |
+| `DNSCewl` | Custom wordlist generation |
+
+## 1> SUBDOMAIN ENUMERATION ——→
+
+1.  
+
+### Create a target folder
+
+```bash
+mkdir -p recon/example.com
+cd recon/example.com
+
+```
+
+1. 
+
+### Passive Enumeration
+
+```bash
+subfinder -d example.com -all -silent > subfinder.txt
+assetfinder --subs-only example.com > assetfinder.txt
+findomain -t example.com -q > findomain.txt
+
+crobat -s example.com > crobat.txt
+
+```
+
+### here tool > ctfr [have envn then use these cmd
+
+path for folder —> /Desktop/dhiraj/hunting/recon/ —folder name —
+
+## METHOD 1 (RECOMMENDED): Run from its folder
+
+```bash
+cd /opt/tools/ctfr
+source venv/bin/activate
+python3 ctfr.py -d example.com -o ~/Desktop/dhiraj/hunting/recon/ctfr.txt
+
+```
+
+## METHOD 2: Create a shortcut command (optional)
+
+```bash
+sudoln -s /opt/tools/ctfr/ctfr.py /usr/local/bin/ctfr
+sudochmod +x /opt/tools/ctfr/ctfr.py
+
+```
+
+ 
+
+Then:
+
+```bash
+ctfr -d meesho.com -o ctfr.txt
+
+```
+
+1. 
+
+### GitHub Subdomains
+
+```bash
+github-subdomains -d example.com -t YOUR_GITHUB_TOKEN > github.txt
+
+```
+
+1. 
+
+### Combine & Remove Duplicates
+
+```bash
+cat *.txt |sort -u > all_subdomains.txt
+
+```
+
+1. 
+
+### Resolve Live Subdomains
+
+```bash
+puredns resolve all_subdomains.txt \
+  -r /opt/tools/word-lists/resolvers.txt \
+  -w alive_subdomains.txt
+
+```
+
+now have real, live subdomains.
+
+## 2>  FIND LIVE WEBSITES
+
+check which subdomains have web services. 
+
+### Tool Used: `httpx`
+
+```bash
+httpx -l alive_subdomains.txt -title -status-code -tech-detect -o live_http.txt
+
+```
+
+## 3> SUBDOMAIN TAKEOVER
+
+find subdomains pointing to unclaimed services
+
+| Tool | Purpose |
+| --- | --- |
+| `subjack` | Detect takeover via fingerprints |
+| `nuclei` | Advanced takeover templates |
+| `httpx` | Detect suspicious responses |
+
+## Subdomain Takeover Workflow
+
+### 1️⃣ Using Subjack
+
+```bash
+subjack -w alive_subdomains.txt \
+  -t 100 \
+  -timeout 30 \
+  -ssl \
+  -v \
+  -o takeover_subjack.txt
+
+```
+
+update nuclei first —————
+
+nuclei -update
+nuclei -update-templates
+
+### 2️⃣ Using Nuclei (BEST METHOD)
+
+```bash
+nuclei -l alive_subdomains.txt \
+  -t takeovers \
+  -severity medium,high,critical \
+  -o takeover_nuclei.txt
+
+```
+
+1. 
+    
+
+### 3️⃣ Manual Confirmation (VERY IMPORTANT)
+
+When a tool flags something:
+
+```bash
+httpx -u vulnerable.example.com -status-code -title -v
+
+```
+
+  or with protocol check :
+
+httpx -u [vulnerable.example.com](http://vulnerable.example.com/) -status-code -title -tech-detect
+
+Then open it in browser and verify:
+
+- `No such app`
+- `There is no app configured`
+- `Repository not found`
+
+📌 **Never report without manual verification**
+
+# 4️⃣ BONUS: AUTOMATED SUBDOMAIN + TAKEOVER SCRIPT
+
+```bash
+subfinder -d example.com -silent > sub.txt
+assetfinder --subs-only example.com >> sub.txt
+findomain -t example.com -q >> sub.txt
+sort -u sub.txt > all.txt
+
+puredns resolve all.txt \
+  -r /opt/tools/word-lists/resolvers.txt \
+  -w alive.txt
+
+httpx -l alive.txt -silent > live.txt
+
+nuclei -l live.txt -t takeovers -o takeover.txt
+
+```
+
+Full Subdomain Takeover Workflow (Bug Bounty Standard)
+
+### 1. Check live subdomains
+
+httpx -l alive_subdomains.txt -silent > live.txt
+
+### 2. Subjack
+
+subjack -w live.txt -ssl -t 100 -timeout 30 \
+-c ~/.config/subjack/fingerprints.json \
+-o takeover_subjack.txt
+
+### 3. Nuclei
+
+nuclei -l live.txt -t http/takeovers/ -o takeover_nuclei.txt
+
+### 4. Manual verification
+
+httpx -l takeover_subjack.txt -status-code -title
+
+# Why Manual Confirmation is REQUIRED ⚠️
+
+- Subjack & Nuclei = **false positives**
+- Bug bounty programs **REJECT** without manual proof
+- Always:
+    - Open URL in browser
+    - Check **service error page**
+    - Verify **account claimable**
+
+# AFTER ENUMERATION (IMPORTANT STEP)
+
+Combine & clean:
+
+```bash
+cat *.txt |sort -u > all_combinesubdomains.txt
+
+```
+
+Resolve live:
+
+```bash
+puredns resolve all_combinesubdomains.txt \
+  -r /opt/tools/word-lists/resolvers.txt \
+  -w alive.txt
+
+```
+
+Check web:
+
+```bash
+httpx -l alive.txt -status-code -title -o live.txt
+
+```
+
+Go to > 2 Advanced scan tools BB recon
